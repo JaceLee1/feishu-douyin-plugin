@@ -1,0 +1,61 @@
+# 飞书多维表格插件清单文件
+# 此文件用于描述插件的基本信息
+
+# 插件基本信息
+plugin:
+  # 插件唯一标识（使用 UUID 或自定义唯一字符串）
+  id: "douyin-data-extractor"
+  # 插件名称
+  name: "抖音数据提取"
+  # 插件描述
+  description: "输入抖音视频链接，自动提取视频数据并写入表格"
+  # 插件版本
+  version: "1.0.0"
+  # 插件图标（可选）
+  icon: "music"
+
+# 开发者信息
+developer:
+  # 开发者名称
+  name: ""
+  # 联系方式
+  contact: ""
+
+# 插件配置
+config:
+  # 插件类型：sidebar 表示侧边栏插件
+  type: "sidebar"
+  # 前端页面 URL（部署后替换为实际地址）
+  src: "https://your-domain.com/feishu-douyin-plugin/index.html"
+  # 是否启用
+  enabled: true
+
+# 权限配置
+permissions:
+  # 多维表格权限
+  - "bitable:table:read"   # 读取表格数据
+  - "bitable:table:write"  # 写入表格数据
+
+# 支持的平台
+platforms:
+  - "Desktop"      # 桌面端
+  - "Mobile"       # 移动端（可选）
+
+# 语言配置
+locales:
+  zh-CN:
+    name: "抖音数据提取"
+    description: "输入抖音视频链接，自动提取视频数据并写入表格"
+  en-US:
+    name: "Douyin Data Extractor"
+    description: "Extract Douyin video data to Bitable"
+
+# 更新日志
+changelog:
+  - version: "1.0.0"
+    date: "2026-04-01"
+    changes:
+      - "初始版本发布"
+      - "支持抖音视频数据提取"
+      - "支持自动写入飞书多维表格"
+      - "支持记录去重更新"

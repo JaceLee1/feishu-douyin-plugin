@@ -1,0 +1,17 @@
+{
+  "name": "feishu-douyin-plugin",
+  "version": "1.0.0",
+  "description": "飞书多维表格插件 - 抖音数据提取",
+  "scripts": {
+    "dev": "npx serve .",
+    "build": "echo '纯前端项目，无需构建'"
+  },
+  "keywords": [
+    "feishu",
+    "bitable",
+    "douyin",
+    "plugin"
+  ],
+  "author": "",
+  "license": "MIT"
+}
