@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>抖音数据提取 - TikHub 测试版</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      font-size: 14px; padding: 20px; background: #f5f6f7;
+    }
+    .container { max-width: 600px; margin: 0 auto; background: #fff; padding: 24px; border-radius: 8px; }
+    h1 { font-size: 18px; margin-bottom: 20px; color: #1f2329; }
+    .form-group { margin-bottom: 16px; }
+    label { display: block; margin-bottom: 6px; font-weight: 500; color: #1f2329; }
+    input[type="text"], input[type="password"] {
+      width: 100%; padding: 10px 12px; border: 1px solid #dee0e3; border-radius: 6px; font-size: 13px;
+    }
+    input:focus { outline: none; border-color: #3370ff; box-shadow: 0 0 0 2px rgba(51,112,255,0.15); }
+    .btn {
+      width: 100%; padding: 12px; background: #3370ff; color: #fff; border: none; border-radius: 6px;
+      font-size: 14px; font-weight: 500; cursor: pointer;
+    }
+    .btn:hover { background: #2860e1; }
+    .btn:disabled { background: #c9cdd4; cursor: not-allowed; }
+    .result { margin-top: 20px; padding: 16px; background: #f5f6f7; border-radius: 6px; display: none; }
+    .result.show { display: block; }
+    .result-item { display: flex; padding: 8px 0; border-bottom: 1px solid #eaecec; }
+    .result-item:last-child { border-bottom: none; }
+    .result-label { min-width: 80px; color: #8f959e; }
+    .result-value { flex: 1; color: #1f2329; }
+    .status { margin-top: 12px; padding: 12px; border-radius: 6px; display: none; }
+    .status.show { display: block; }
+    .status.error { background: #ffeceb; color: #f5483b; }
+    .status.success { background: #e3f9e5; color: #1da745; }
+    .status.loading { background: #e8f3ff; color: #3370ff; }
+    .cover-img { width: 120px; height: 120px; object-fit: cover; border-radius: 6px; margin-top: 8px; }
+    .help { font-size: 12px; color: #8f959e; margin-top: 16px; line-height: 1.6; }
+    .help a { color: #3370ff; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🎵 抖音数据提取（TikHub 测试版）</h1>
+
+    <div class="form-group">
+      <label>TikHub API Key</label>
+      <input type="password" id="apiKey" placeholder="粘贴你的 API Key（以 sk-开头）" />
+    </div>
+
+    <div class="form-group">
+      <label>抖音视频链接</label>
+      <input type="text" id="videoUrl" placeholder="如：https://v.douyin.com/ieZbDhKv/" />
+    </div>
+
+    <button class="btn" id="extractBtn" onclick="extract()">提取数据</button>
+
+    <div class="status" id="status"></div>
+
+    <div class="result" id="result">
+      <div class="result-item"><span class="result-label">作者：</span><span class="result-value" id="author"></span></div>
+      <div class="result-item"><span class="result-label">文案：</span><span class="result-value" id="desc"></span></div>
+      <div class="result-item"><span class="result-label">点赞：</span><span class="result-value" id="likes"></span></div>
+      <div class="result-item"><span class="result-label">评论：</span><span class="result-value" id="comments"></span></div>
+      <div class="result-item"><span class="result-label">分享：</span><span class="result-value" id="shares"></span></div>
+      <div class="result-item"><span class="result-label">播放：</span><span class="result-value" id="plays"></span></div>
+      <div class="result-item"><span class="result-label">时间：</span><span class="result-value" id="time"></span></div>
+      <div class="result-item"><span class="result-label">封面：</span><span class="result-value"><img id="cover" class="cover-img" src="" /></span></div>
+    </div>
+
+    <div class="help">
+      获取 API Key: <a href="https://tikhub.io/dashboard/api-keys" target="_blank">tikhub.io/dashboard/api-keys</a><br>
+      按 F12 打开控制台查看详细错误信息
+    </div>
+  </div>
+
+  <script>
+    async function extract() {
+      const apiKey = document.getElementById('apiKey').value.trim();
+      const videoUrl = document.getElementById('videoUrl').value.trim();
+      const btn = document.getElementById('extractBtn');
+      const status = document.getElementById('status');
+      const result = document.getElementById('result');
+
+      if (!apiKey) {
+        status.className = 'status show error';
+        status.textContent = '请输入 TikHub API Key';
+        return;
+      }
+      if (!videoUrl) {
+        status.className = 'status show error';
+        status.textContent = '请输入抖音视频链接';
+        return;
+      }
+
+      btn.disabled = true;
+      btn.textContent = '提取中...';
+      status.className = 'status show loading';
+      status.textContent = '正在解析...';
+      result.classList.remove('show');
+
+      try {
+        const response = await fetch(
+          `https://api.tikhub.io/api/v1/short_video/?url=${encodeURIComponent(videoUrl)}`,
+          {
+            method: 'GET',
+            headers: {
+              'Authorization': `Bearer ${apiKey}`,
+              'Accept': 'application/json'
+            }
+          }
+        );
+
+        const data = await response.json();
+        console.log('TikHub 返回:', data);
+
+        if (!response.ok) {
+          throw new Error(data.message || data.detail || `HTTP ${response.status}`);
+        }
+
+        if (!data.data || !data.data.author) {
+          throw new Error('返回数据格式异常');
+        }
+
+        const d = data.data;
+        document.getElementById('author').textContent = d.author.nickname || d.author.unique_id || '未知';
+        document.getElementById('desc').textContent = d.desc || d.title || '无文案';
+        document.getElementById('likes').textContent = (d.digg_count || d.statistics?.digg_count || 0).toLocaleString();
+        document.getElementById('comments').textContent = (d.comment_count || d.statistics?.comment_count || 0).toLocaleString();
+        document.getElementById('shares').textContent = (d.share_count || d.statistics?.share_count || 0).toLocaleString();
+        document.getElementById('plays').textContent = (d.play_count || d.statistics?.play_count || 0).toLocaleString();
+        document.getElementById('time').textContent = d.create_time ? new Date(d.create_time * 1000).toLocaleString('zh-CN') : '-';
+        document.getElementById('cover').src = d.cover?.url_list?.[0] || d.cover?.uri || '';
+
+        status.className = 'status show success';
+        status.textContent = '✓ 提取成功！';
+        result.classList.add('show');
+
+      } catch (error) {
+        console.error('提取失败:', error);
+        status.className = 'status show error';
+        status.textContent = '✕ ' + error.message;
+      } finally {
+        btn.disabled = false;
+        btn.textContent = '提取数据';
+      }
+    }
+  </script>
+</body>
+</html>
