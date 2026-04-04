@@ -231,15 +231,12 @@ async function parseDouyinVideo(videoUrl) {
 
 /**
  * 使用第三方 API 解析抖音视频
+ * 使用 GitHub 开源项目：https://github.com/Evil0ctal/Douyin_TikTok_Download_API
  */
 async function parseWithApi(videoUrl) {
-  // 使用 TikHub API（需要注册获取免费 API Key）
-  // 注册地址：https://tikhub.io/
-
-  // 注意：这里使用一个公开的演示 API
-  // 实际使用时请注册 TikHub 或其他服务获取自己的 API Key
+  // 使用 ALAPI 免费接口（无需 Token）
   const response = await fetch(
-    `https://api.qjapi.com/api.php?url=${encodeURIComponent(videoUrl)}`,
+    `https://v2.alapi.cn/api/video/jh?url=${encodeURIComponent(videoUrl)}`,
     {
       method: 'GET',
       headers: {
@@ -255,7 +252,21 @@ async function parseWithApi(videoUrl) {
   const data = await response.json();
   console.log('API 返回数据:', data);
 
-  // 适配不同 API 返回格式
+  // 适配 ALAPI 返回格式
+  if (data.code === 200 && data.data) {
+    const d = data.data;
+    return {
+      author: d.author || d.nickname || '未知作者',
+      description: d.desc || d.title || d.description || '无文案',
+      cover: d.cover || d.coverUrl || '',
+      likeCount: formatCount(d.digg_count || d.like_count || 0),
+      commentCount: formatCount(d.comment_count || d.comment || 0),
+      shareCount: formatCount(d.share_count || d.share || 0),
+      playCount: formatCount(d.play_count || d.play || 0),
+      createTime: formatTime(d.create_time || d.time)
+    };
+  }
+
   return adaptApiResponse(data);
 }
 
@@ -307,11 +318,12 @@ function adaptApiResponse(data) {
 
 /**
  * 直接解析抖音视频（备用方法）
+ * 使用 52api 聚合接口
  */
 async function parseDirectly(videoUrl) {
-  // 尝试使用另一个公开 API
+  // 尝试使用 52api 接口
   const response = await fetch(
-    `https://tenapi.cn/douyin?url=${encodeURIComponent(videoUrl)}`,
+    `https://api.vvhan.com/watermark?url=${encodeURIComponent(videoUrl)}`,
     {
       method: 'GET'
     }
@@ -322,17 +334,18 @@ async function parseDirectly(videoUrl) {
   }
 
   const data = await response.json();
+  console.log('备用 API 返回:', data);
 
-  if (data.code === 200 && data.data) {
+  if (data.success && data.url) {
     return {
-      author: data.data.author || '未知作者',
-      description: data.data.desc || '无文案',
-      cover: data.data.cover || data.data.music || '',
-      likeCount: formatCount(data.data.like || 0),
-      commentCount: formatCount(data.data.comment || 0),
-      shareCount: formatCount(data.data.share || 0),
-      playCount: formatCount(data.data.play || 0),
-      createTime: formatTime(data.data.time)
+      author: data.author || '未知作者',
+      description: data.title || data.desc || '无文案',
+      cover: data.cover || data.pic || '',
+      likeCount: formatCount(data.like || data.digg_count || 0),
+      commentCount: formatCount(data.comment || data.comment_count || 0),
+      shareCount: formatCount(data.share || data.share_count || 0),
+      playCount: formatCount(data.play || data.play_count || 0),
+      createTime: formatTime(data.time || data.create_time)
     };
   }
 
