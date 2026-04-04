@@ -31,10 +31,12 @@ const CONFIG = {
 
 // ==================== 全局状态 ====================
 let currentExtractedData = null;
+let apiKey = ''; // TikHub API Key
 
 // ==================== DOM 元素引用 ====================
 const elements = {
   videoUrl: null,
+  apiKey: null,
   extractBtn: null,
   statusArea: null,
   statusIcon: null,
@@ -61,6 +63,7 @@ document.addEventListener('DOMContentLoaded', () => {
  */
 function initElements() {
   elements.videoUrl = document.getElementById('videoUrl');
+  elements.apiKey = document.getElementById('apiKey');
   elements.extractBtn = document.getElementById('extractBtn');
   elements.statusArea = document.getElementById('statusArea');
   elements.statusIcon = document.getElementById('statusIcon');
@@ -73,6 +76,21 @@ function initElements() {
   elements.previewShare = document.getElementById('previewShare');
   elements.previewPlay = document.getElementById('previewPlay');
   elements.previewCover = document.getElementById('previewCover');
+
+  // 加载保存的 API Key
+  const savedKey = localStorage.getItem('tikhub_api_key');
+  if (savedKey && elements.apiKey) {
+    elements.apiKey.value = savedKey;
+    apiKey = savedKey;
+  }
+
+  // 保存 API Key 变化
+  if (elements.apiKey) {
+    elements.apiKey.addEventListener('change', (e) => {
+      apiKey = e.target.value.trim();
+      localStorage.setItem('tikhub_api_key', apiKey);
+    });
+  }
 }
 
 /**
@@ -203,71 +221,101 @@ async function getRealDouyinUrl(shortUrl) {
 
 /**
  * 解析抖音视频数据
- * 使用多个备用 API 确保稳定性
+ * 使用多个 API 确保稳定性（已在 parseWithApi 中实现）
  */
 async function parseDouyinVideo(videoUrl) {
-  // 方法 1: 使用解析 API
   try {
     const data = await parseWithApi(videoUrl);
     if (data && data.author) {
       return data;
     }
   } catch (error) {
-    console.warn('API 解析失败，尝试备用方法:', error);
+    console.warn('API 解析失败:', error);
   }
 
-  // 方法 2: 尝试直接解析（针对某些公开的 API）
-  try {
-    const data = await parseDirectly(videoUrl);
-    if (data) {
-      return data;
-    }
-  } catch (error) {
-    console.warn('直接解析失败:', error);
-  }
-
-  throw new Error('所有解析方法均失败，请检查链接或稍后重试');
+  throw new Error('所有解析方法均失败，请检查链接或稍后重试。建议注册 TikHub 获取稳定 API: https://tikhub.io/');
 }
 
 /**
  * 使用第三方 API 解析抖音视频
- * 使用 GitHub 开源项目：https://github.com/Evil0ctal/Douyin_TikTok_Download_API
+ * 优先使用 TikHub（需要 API Key），备用多个免费接口
  */
 async function parseWithApi(videoUrl) {
-  // 使用 ALAPI 免费接口（无需 Token）
-  const response = await fetch(
-    `https://v2.alapi.cn/api/video/jh?url=${encodeURIComponent(videoUrl)}`,
-    {
-      method: 'GET',
-      headers: {
-        'Accept': 'application/json'
+  // 如果有 API Key，使用 TikHub
+  if (apiKey) {
+    try {
+      const response = await fetch(
+        `https://api.tikhub.io/api/v1/short_video/?url=${encodeURIComponent(videoUrl)}`,
+        {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${apiKey}`,
+            'Accept': 'application/json'
+          }
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error('TikHub API 请求失败');
+      }
+
+      const data = await response.json();
+      console.log('TikHub 返回数据:', data);
+
+      if (data.data && data.data.author) {
+        const d = data.data;
+        return {
+          author: d.author?.nickname || d.author?.unique_id || '未知作者',
+          description: d.desc || d.title || d.description || '无文案',
+          cover: d.cover?.url_list?.[0] || d.cover?.uri || '',
+          likeCount: formatCount(d.digg_count || d.statistics?.digg_count || 0),
+          commentCount: formatCount(d.comment_count || d.statistics?.comment_count || 0),
+          shareCount: formatCount(d.share_count || d.statistics?.share_count || 0),
+          playCount: formatCount(d.play_count || d.statistics?.play_count || 0),
+          createTime: formatTime(d.create_time || d.createTime)
+        };
+      }
+    } catch (error) {
+      console.warn('TikHub API 失败，尝试备用接口:', error);
+    }
+  }
+
+  // 备用接口 1: 轻解析
+  try {
+    const response = await fetch(
+      `https://api.qjapi.com/api.php?url=${encodeURIComponent(videoUrl)}`,
+      { method: 'GET' }
+    );
+    if (response.ok) {
+      const data = await response.json();
+      if (data.data) return adaptApiResponse(data);
+    }
+  } catch (e) { console.warn('轻解析 API 失败:', e); }
+
+  // 备用接口 2: TENAPI
+  try {
+    const response = await fetch(
+      `https://tenapi.cn/douyin?url=${encodeURIComponent(videoUrl)}`,
+      { method: 'GET' }
+    );
+    if (response.ok) {
+      const data = await response.json();
+      if (data.code === 200 && data.data) {
+        return {
+          author: data.data.author || '未知作者',
+          description: data.data.desc || '无文案',
+          cover: data.data.cover || '',
+          likeCount: formatCount(data.data.like || 0),
+          commentCount: formatCount(data.data.comment || 0),
+          shareCount: formatCount(data.data.share || 0),
+          playCount: formatCount(data.data.play || 0),
+          createTime: formatTime(data.data.time)
+        };
       }
     }
-  );
+  } catch (e) { console.warn('TENAPI 失败:', e); }
 
-  if (!response.ok) {
-    throw new Error('API 请求失败');
-  }
-
-  const data = await response.json();
-  console.log('API 返回数据:', data);
-
-  // 适配 ALAPI 返回格式
-  if (data.code === 200 && data.data) {
-    const d = data.data;
-    return {
-      author: d.author || d.nickname || '未知作者',
-      description: d.desc || d.title || d.description || '无文案',
-      cover: d.cover || d.coverUrl || '',
-      likeCount: formatCount(d.digg_count || d.like_count || 0),
-      commentCount: formatCount(d.comment_count || d.comment || 0),
-      shareCount: formatCount(d.share_count || d.share || 0),
-      playCount: formatCount(d.play_count || d.play || 0),
-      createTime: formatTime(d.create_time || d.time)
-    };
-  }
-
-  return adaptApiResponse(data);
+  throw new Error('所有 API 均失败');
 }
 
 /**
@@ -314,42 +362,6 @@ function adaptApiResponse(data) {
     playCount: formatCount(data.play || 0),
     createTime: formatTime(data.time || data.create_time)
   };
-}
-
-/**
- * 直接解析抖音视频（备用方法）
- * 使用 52api 聚合接口
- */
-async function parseDirectly(videoUrl) {
-  // 尝试使用 52api 接口
-  const response = await fetch(
-    `https://api.vvhan.com/watermark?url=${encodeURIComponent(videoUrl)}`,
-    {
-      method: 'GET'
-    }
-  );
-
-  if (!response.ok) {
-    throw new Error('备用 API 请求失败');
-  }
-
-  const data = await response.json();
-  console.log('备用 API 返回:', data);
-
-  if (data.success && data.url) {
-    return {
-      author: data.author || '未知作者',
-      description: data.title || data.desc || '无文案',
-      cover: data.cover || data.pic || '',
-      likeCount: formatCount(data.like || data.digg_count || 0),
-      commentCount: formatCount(data.comment || data.comment_count || 0),
-      shareCount: formatCount(data.share || data.share_count || 0),
-      playCount: formatCount(data.play || data.play_count || 0),
-      createTime: formatTime(data.time || data.create_time)
-    };
-  }
-
-  return null;
 }
 
 /**
