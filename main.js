@@ -239,24 +239,29 @@ async function parseDouyinVideo(videoUrl) {
 /**
  * 使用第三方 API 解析抖音视频
  * 优先使用 TikHub（需要 API Key），备用多个免费接口
+ * 注意：在飞书插件环境中，需要使用飞书云函数或后端中转
  */
 async function parseWithApi(videoUrl) {
   // 如果有 API Key，使用 TikHub
   if (apiKey) {
     try {
+      // 在飞书环境中直接调用（飞书后端会代理）
       const response = await fetch(
         `https://api.tikhub.io/api/v1/short_video/?url=${encodeURIComponent(videoUrl)}`,
         {
-          method: 'GET',
+          method: 'POST', // 使用 POST 避免 CORS 预检
           headers: {
             'Authorization': `Bearer ${apiKey}`,
-            'Accept': 'application/json'
-          }
+            'Accept': 'application/json',
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ url: videoUrl })
         }
       );
 
       if (!response.ok) {
-        throw new Error('TikHub API 请求失败');
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || errorData.detail || `HTTP ${response.status}`);
       }
 
       const data = await response.json();
@@ -276,44 +281,30 @@ async function parseWithApi(videoUrl) {
         };
       }
     } catch (error) {
-      console.warn('TikHub API 失败，尝试备用接口:', error);
+      console.error('TikHub API 错误:', error);
+      throw error; // 直接抛出错误，让用户知道
     }
   }
 
-  // 备用接口 1: 轻解析
-  try {
-    const response = await fetch(
-      `https://api.qjapi.com/api.php?url=${encodeURIComponent(videoUrl)}`,
-      { method: 'GET' }
-    );
-    if (response.ok) {
-      const data = await response.json();
-      if (data.data) return adaptApiResponse(data);
-    }
-  } catch (e) { console.warn('轻解析 API 失败:', e); }
+  // 备用接口（这些接口支持 CORS）
+  const backupApis = [
+    'https://api.qjapi.com/api.php?url=',
+    'https://tenapi.cn/douyin?url='
+  ];
 
-  // 备用接口 2: TENAPI
-  try {
-    const response = await fetch(
-      `https://tenapi.cn/douyin?url=${encodeURIComponent(videoUrl)}`,
-      { method: 'GET' }
-    );
-    if (response.ok) {
-      const data = await response.json();
-      if (data.code === 200 && data.data) {
-        return {
-          author: data.data.author || '未知作者',
-          description: data.data.desc || '无文案',
-          cover: data.data.cover || '',
-          likeCount: formatCount(data.data.like || 0),
-          commentCount: formatCount(data.data.comment || 0),
-          shareCount: formatCount(data.data.share || 0),
-          playCount: formatCount(data.data.play || 0),
-          createTime: formatTime(data.data.time)
-        };
+  for (const baseUrl of backupApis) {
+    try {
+      const response = await fetch(baseUrl + encodeURIComponent(videoUrl));
+      if (response.ok) {
+        const data = await response.json();
+        if (data.data || (data.code === 200 && data.data !== undefined)) {
+          return adaptApiResponse(data);
+        }
       }
+    } catch (e) {
+      console.warn(`备用 API ${baseUrl} 失败:`, e.message);
     }
-  } catch (e) { console.warn('TENAPI 失败:', e); }
+  }
 
   throw new Error('所有 API 均失败');
 }
