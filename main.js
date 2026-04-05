@@ -237,77 +237,7 @@ async function parseDouyinVideo(videoUrl) {
 }
 
 /**
- * 使用第三方 API 解析抖音视频
- * 优先使用 TikHub（需要 API Key），备用多个免费接口
- * 注意：在飞书插件环境中，需要使用飞书云函数或后端中转
- */
-async function parseWithApi(videoUrl) {
-  // 如果有 API Key，使用 TikHub
-  if (apiKey) {
-    try {
-      // 在飞书环境中直接调用（飞书后端会代理）
-      const response = await fetch(
-        `https://api.tikhub.io/api/v1/short_video/?url=${encodeURIComponent(videoUrl)}`,
-        {
-          method: 'POST', // 使用 POST 避免 CORS 预检
-          headers: {
-            'Authorization': `Bearer ${apiKey}`,
-            'Accept': 'application/json',
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({ url: videoUrl })
-        }
-      );
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.message || errorData.detail || `HTTP ${response.status}`);
-      }
-
-      const data = await response.json();
-      console.log('TikHub 返回数据:', data);
-
-      if (data.data && data.data.author) {
-        const d = data.data;
-        return {
-          author: d.author?.nickname || d.author?.unique_id || '未知作者',
-          description: d.desc || d.title || d.description || '无文案',
-          cover: d.cover?.url_list?.[0] || d.cover?.uri || '',
-          likeCount: formatCount(d.digg_count || d.statistics?.digg_count || 0),
-          commentCount: formatCount(d.comment_count || d.statistics?.comment_count || 0),
-          shareCount: formatCount(d.share_count || d.statistics?.share_count || 0),
-          playCount: formatCount(d.play_count || d.statistics?.play_count || 0),
-          createTime: formatTime(d.create_time || d.createTime)
-        };
-      }
-    } catch (error) {
-      console.error('TikHub API 错误:', error);
-      throw error; // 直接抛出错误，让用户知道
-    }
-  }
-
-  // 备用接口（这些接口支持 CORS）
-  const backupApis = [
-    'https://api.qjapi.com/api.php?url=',
-    'https://tenapi.cn/douyin?url='
-  ];
-
-  for (const baseUrl of backupApis) {
-    try {
-      const response = await fetch(baseUrl + encodeURIComponent(videoUrl));
-      if (response.ok) {
-        const data = await response.json();
-        if (data.data || (data.code === 200 && data.data !== undefined)) {
-          return adaptApiResponse(data);
-        }
-      }
-    } catch (e) {
-      console.warn(`备用 API ${baseUrl} 失败:`, e.message);
-    }
-  }
-
-  throw new Error('所有 API 均失败');
-}
+ * 使用第三方 API 解析抖音视频\n * 优先使用 TikHub（需要 API Key），备用多个免费接口\n * TikHub 文档：https://docs.tikhub.io/\n */\nasync function parseWithApi(videoUrl) {\n  // 如果有 API Key，使用 TikHub\n  if (apiKey) {\n    try {\n      // 中国大陆使用 dev 域名，其他地区使用 io 域名\n      const baseUrl = apiKey.startsWith('dev_') \n        ? 'https://api.tikhub.dev' \n        : 'https://api.tikhub.io';\n      \n      const response = await fetch(\n        `${baseUrl}/api/v1/douyin/web/video_data?url=${encodeURIComponent(videoUrl)}`,\n        {\n          method: 'GET',\n          headers: {\n            'Authorization': `Bearer ${apiKey}`,\n            'Accept': 'application/json'\n          }\n        }\n      );\n\n      if (!response.ok) {\n        const errorData = await response.json().catch(() => ({}));\n        throw new Error(errorData.detail || errorData.message || `HTTP ${response.status}`);\n      }\n\n      const data = await response.json();\n      console.log('TikHub 返回数据:', data);\n\n      // TikHub 返回格式检查\n      if (data.code === 0 && data.data) {\n        const d = data.data;\n        return {\n          author: d.author?.nickname || d.author?.unique_id || '未知作者',\n          description: d.desc || d.title || '无文案',\n          cover: d.cover?.url_list?.[0] || d.cover?.uri || '',\n          likeCount: formatCount(d.statistics?.digg_count || d.digg_count || 0),\n          commentCount: formatCount(d.statistics?.comment_count || d.comment_count || 0),\n          shareCount: formatCount(d.statistics?.share_count || d.share_count || 0),\n          playCount: formatCount(d.statistics?.play_count || d.play_count || 0),\n          createTime: formatTime(d.create_time || d.createTime)\n        };\n      } else if (data.data && data.data.author) {\n        // 兼容旧格式\n        const d = data.data;\n        return {\n          author: d.author?.nickname || d.author?.unique_id || '未知作者',\n          description: d.desc || d.title || d.description || '无文案',\n          cover: d.cover?.url_list?.[0] || d.cover?.uri || '',\n          likeCount: formatCount(d.digg_count || d.statistics?.digg_count || 0),\n          commentCount: formatCount(d.comment_count || d.statistics?.comment_count || 0),\n          shareCount: formatCount(d.share_count || d.statistics?.share_count || 0),\n          playCount: formatCount(d.play_count || d.statistics?.play_count || 0),\n          createTime: formatTime(d.create_time || d.createTime)\n        };\n      } else {\n        throw new Error(data.msg || '返回数据格式异常');\n      }\n    } catch (error) {\n      console.error('TikHub API 错误:', error);\n      throw error; // 直接抛出错误，让用户知道\n    }\n  }\n\n  // 备用接口（这些接口支持 CORS）\n  const backupApis = [\n    { url: 'https://api.qjapi.com/free3/api.php?url=', name: '轻解析' },\n    { url: 'https://tenapi.cn/douyin?url=', name: 'TENAPI' }\n  ];\n\n  for (const api of backupApis) {\n    try {\n      const response = await fetch(api.url + encodeURIComponent(videoUrl));\n      if (response.ok) {\n        const data = await response.json();\n        if (data.data || (data.code === 200 && data.data !== undefined)) {\n          return adaptApiResponse(data);\n        }\n      }\n    } catch (e) {\n      console.warn(`${api.name} API 失败:`, e.message);\n    }\n  }\n\n  throw new Error('所有 API 均失败');\n}
 
 /**
  * 适配不同 API 的返回格式
